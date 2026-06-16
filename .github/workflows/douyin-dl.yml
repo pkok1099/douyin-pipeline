@@ -1,0 +1,42 @@
+name: Douyin Auto Download
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # every 6 hours
+  workflow_dispatch:
+    inputs:
+      hashtag:
+        description: 'Hashtag to download'
+        required: false
+        default: '美食'
+      limit:
+        description: 'Max videos per hashtag'
+        required: false
+        default: '10'
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install douyin-downloader
+
+      - name: Download by hashtag
+        run: |
+          HASHTAG="${{ github.event.inputs.hashtag || '美食' }}"
+          LIMIT="${{ github.event.inputs.limit || '10' }}"
+          douyin-dl --hashtag "$HASHTAG" --limit "$LIMIT" -o ./downloads/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: douyin-${{ github.event.inputs.hashtag || '美食' }}-${{ github.run_id }}
+          path: ./downloads/
+          retention-days: 7
