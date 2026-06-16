@@ -12,7 +12,7 @@ on:
       limit:
         description: 'Max videos per hashtag'
         required: false
-        default: '10'
+        default: '5'
 
 jobs:
   download:
@@ -24,17 +24,23 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
+      - name: Install douyin-downloader
         run: |
-          pip install douyin-downloader
+          pip install requests browser-cookie3
+          git clone --depth 1 https://github.com/jiji262/douyin-downloader.git /tmp/douyin-dl
+          cd /tmp/douyin-dl
+          pip install -r requirements.txt
+          cp -r . /root/douyin-dl
 
       - name: Download by hashtag
         run: |
           HASHTAG="${{ github.event.inputs.hashtag || '美食' }}"
-          LIMIT="${{ github.event.inputs.limit || '10' }}"
-          douyin-dl --hashtag "$HASHTAG" --limit "$LIMIT" -o ./downloads/
+          LIMIT="${{ github.event.inputs.limit || '5' }}"
+          cd /root/douyin-dl
+          python douyin_downloader.py --hashtag "$HASHTAG" --limit "$LIMIT" -o $GITHUB_WORKSPACE/downloads/
 
       - name: Upload artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: douyin-${{ github.event.inputs.hashtag || '美食' }}-${{ github.run_id }}
