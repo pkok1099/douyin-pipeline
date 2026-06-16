@@ -5,23 +5,18 @@ on:
     - cron: '0 0,6,12,18 * * *'  # 4x daily
   workflow_dispatch:
     inputs:
-      mode:
-        description: 'Download mode'
-        required: true
-        type: choice
-        options:
-          - hashtag
-          - user
-          - url
-        default: 'hashtag'
-      query:
-        description: 'Hashtag, user URL, or video URL'
-        required: true
-        default: '美食'
-      count:
-        description: 'Number of videos'
+      url:
+        description: 'Video URL (TikTok or Douyin)'
         required: false
-        default: '10'
+        default: ''
+      file:
+        description: 'File with URLs (one per line)'
+        required: false
+        default: 'urls.txt'
+      count:
+        description: 'Max videos to download'
+        required: false
+        default: '5'
 
 jobs:
   download:
@@ -33,41 +28,30 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install jiji262/douyin-downloader
+      - name: Install dependencies
         run: |
-          pip install -r scripts/requirements.txt 2>/dev/null || true
-          pip install git+https://github.com/jiji262/douyin-downloader.git
+          pip install requests
 
-      - name: Download videos
+      - name: Download videos via Savetik
         env:
-          MODE: ${{ github.event.inputs.mode || 'hashtag' }}
-          QUERY: ${{ github.event.inputs.query || '美食' }}
-          COUNT: ${{ github.event.inputs.count || '10' }}
+          URL: ${{ github.event.inputs.url }}
+          FILE: ${{ github.event.inputs.file }}
+          COUNT: ${{ github.event.inputs.count }}
         run: |
           mkdir -p downloads
 
-          case "$MODE" in
-            hashtag)
-              echo "=== Downloading hashtag: #$QUERY ==="
-              yt-dlp --download-archive downloads/archive.txt \
-                "https://www.tiktok.com/tag/$QUERY" \
-                --max-downloads "$COUNT" \
-                -o "downloads/%(id)s_%(title).50s.%(ext)s" || true
-              ;;
-            user)
-              echo "=== Downloading user: $QUERY ==="
-              yt-dlp --download-archive downloads/archive.txt \
-                "$QUERY" \
-                --max-downloads "$COUNT" \
-                -o "downloads/%(id)s_%(title).50s.%(ext)s" || true
-              ;;
-            url)
-              echo "=== Downloading URL: $QUERY ==="
-              yt-dlp --download-archive downloads/archive.txt \
-                "$QUERY" \
-                -o "downloads/%(id)s_%(title).50s.%(ext)s" || true
-              ;;
-          esac
+          if [ -n "$URL" ]; then
+            echo "=== Downloading single URL ==="
+            python3 scripts/savetik-dl.py "$URL"
+          elif [ -f "$FILE" ]; then
+            echo "=== Downloading from file: $FILE ==="
+            head -n "$COUNT" "$FILE" > /tmp/urls_to_dl.txt
+            python3 scripts/savetik-dl.py --file /tmp/urls_to_dl.txt
+          else
+            echo "=== No URLs provided, using default ==="
+            echo "https://www.tiktok.com/@eveberliana/video/7537630830340885766" > /tmp/urls_to_dl.txt
+            python3 scripts/savetik-dl.py --file /tmp/urls_to_dl.txt
+          fi
 
           echo "=== Downloaded files ==="
           ls -la downloads/ 2>/dev/null || echo "No files"
@@ -77,5 +61,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: videos-${{ github.run_id }}
-          path: downloads/
+          path: downloads/*.mp4
           retention-days: 7
+          if-no-files-found: warn
