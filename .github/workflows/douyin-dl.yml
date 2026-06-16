@@ -1,18 +1,27 @@
-name: Douyin/TikTok Auto Download
+name: Douyin/TikTok Download
 
 on:
   schedule:
-    - cron: '0 */6 * * *'  # every 6 hours
+    - cron: '0 0,6,12,18 * * *'  # 4x daily
   workflow_dispatch:
     inputs:
-      url:
-        description: 'Video URL to download'
+      mode:
+        description: 'Download mode'
+        required: true
+        type: choice
+        options:
+          - hashtag
+          - user
+          - url
+        default: 'hashtag'
+      query:
+        description: 'Hashtag, user URL, or video URL'
+        required: true
+        default: '美食'
+      count:
+        description: 'Number of videos'
         required: false
-        default: ''
-      file:
-        description: 'File with URLs (one per line)'
-        required: false
-        default: 'urls.txt'
+        default: '10'
 
 jobs:
   download:
@@ -20,18 +29,53 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download videos
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install jiji262/douyin-downloader
         run: |
-          if [ -n "${{ github.event.inputs.url }}" ]; then
-            python3 scripts/savetik-dl.py "${{ github.event.inputs.url }}"
-          else
-            python3 scripts/savetik-dl.py --file "${{ github.event.inputs.file }}"
-          fi
+          pip install -r scripts/requirements.txt 2>/dev/null || true
+          pip install git+https://github.com/jiji262/douyin-downloader.git
+
+      - name: Download videos
+        env:
+          MODE: ${{ github.event.inputs.mode || 'hashtag' }}
+          QUERY: ${{ github.event.inputs.query || '美食' }}
+          COUNT: ${{ github.event.inputs.count || '10' }}
+        run: |
+          mkdir -p downloads
+
+          case "$MODE" in
+            hashtag)
+              echo "=== Downloading hashtag: #$QUERY ==="
+              yt-dlp --download-archive downloads/archive.txt \
+                "https://www.tiktok.com/tag/$QUERY" \
+                --max-downloads "$COUNT" \
+                -o "downloads/%(id)s_%(title).50s.%(ext)s" || true
+              ;;
+            user)
+              echo "=== Downloading user: $QUERY ==="
+              yt-dlp --download-archive downloads/archive.txt \
+                "$QUERY" \
+                --max-downloads "$COUNT" \
+                -o "downloads/%(id)s_%(title).50s.%(ext)s" || true
+              ;;
+            url)
+              echo "=== Downloading URL: $QUERY ==="
+              yt-dlp --download-archive downloads/archive.txt \
+                "$QUERY" \
+                -o "downloads/%(id)s_%(title).50s.%(ext)s" || true
+              ;;
+          esac
+
+          echo "=== Downloaded files ==="
+          ls -la downloads/ 2>/dev/null || echo "No files"
 
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: videos-${{ github.run_id }}
-          path: ./downloads/
+          path: downloads/
           retention-days: 7
