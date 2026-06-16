@@ -1,18 +1,18 @@
-name: Douyin Auto Download
+name: Douyin/TikTok Auto Download
 
 on:
   schedule:
     - cron: '0 */6 * * *'  # every 6 hours
   workflow_dispatch:
     inputs:
-      hashtag:
-        description: 'Hashtag to download'
+      url:
+        description: 'Video URL to download'
         required: false
-        default: '美食'
-      limit:
-        description: 'Max videos per hashtag'
+        default: ''
+      file:
+        description: 'File with URLs (one per line)'
         required: false
-        default: '5'
+        default: 'urls.txt'
 
 jobs:
   download:
@@ -20,29 +20,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install douyin-downloader
+      - name: Download videos
         run: |
-          pip install requests browser-cookie3
-          git clone --depth 1 https://github.com/jiji262/douyin-downloader.git /tmp/douyin-dl
-          cd /tmp/douyin-dl
-          pip install -r requirements.txt
-          cp -r . /root/douyin-dl
-
-      - name: Download by hashtag
-        run: |
-          HASHTAG="${{ github.event.inputs.hashtag || '美食' }}"
-          LIMIT="${{ github.event.inputs.limit || '5' }}"
-          cd /root/douyin-dl
-          python douyin_downloader.py --hashtag "$HASHTAG" --limit "$LIMIT" -o $GITHUB_WORKSPACE/downloads/
+          if [ -n "${{ github.event.inputs.url }}" ]; then
+            python3 scripts/savetik-dl.py "${{ github.event.inputs.url }}"
+          else
+            python3 scripts/savetik-dl.py --file "${{ github.event.inputs.file }}"
+          fi
 
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: douyin-${{ github.event.inputs.hashtag || '美食' }}-${{ github.run_id }}
+          name: videos-${{ github.run_id }}
           path: ./downloads/
           retention-days: 7
